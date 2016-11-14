@@ -19,6 +19,7 @@ include_directories(.)
 include_directories(SYSTEM ~/prjs/wireshark)
 file(GLOB SOURCES *.c)
 add_executable(${PROJECT_NAME} ${SOURCES})
+set_property(TARGET ${PROJECT_NAME} PROPERTY C_STANDARD 11)
 
 find_package(PkgConfig REQUIRED)
 pkg_search_module(LIBWIRESHARK REQUIRED wireshark)
