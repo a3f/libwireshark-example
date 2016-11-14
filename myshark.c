@@ -3,20 +3,21 @@
 #define _GNU_SOURCE
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
-#include <wireshark/epan/epan.h>
-#include <wireshark/epan/print.h>
-#include <wireshark/epan/timestamp.h>
-#include <wireshark/epan/prefs.h>
-#include <wireshark/epan/column.h>
-#include <wireshark/epan/epan-int.h>
-#include <wireshark/wsutil/privileges.h>
-#include <wireshark/epan/epan_dissect.h>
-#include <wireshark/epan/proto.h>
-#include <wireshark/epan/ftypes/ftypes.h>
-#include <wireshark/epan/asm_utils.h>
+#include <epan/epan.h>
+#include <epan/print.h>
+#include <epan/timestamp.h>
+#include <epan/prefs.h>
+#include <epan/column.h>
+#include <epan/epan-int.h>
+#include <wsutil/privileges.h>
+#include <epan/epan_dissect.h>
+#include <epan/proto.h>
+#include <epan/ftypes/ftypes.h>
+#include <epan/asm_utils.h>
 
 extern tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf);
 static void timestamp_set(capture_file cfile);
@@ -50,8 +51,16 @@ int init(char *filename)
 	e_prefs     *prefs_p;
 
 	init_process_policies();
+  epan_register_plugin_types(); /* Types known to libwireshark */
+  wtap_register_plugin_types(); /* Types known to libwiretap */
 
-	epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL);
+  if (!epan_init(register_all_protocols, register_all_protocol_handoffs, NULL,
+                 NULL)) {
+      fprintf(stderr, "Error at epan_init\n");
+      return 2;
+  }
+
+    proto_initialize_all_prefixes();
 
 	cap_file_init(&cfile);
 	cfile.filename = filename;
@@ -140,7 +149,7 @@ void print_each_packet_xml()
 
 	while (read_packet(&edt)) {
 
-		proto_tree_write_pdml(edt, stdout);
+		//proto_tree_write_pdml(edt, stdout);
 
 		epan_dissect_free(edt);
 		edt = NULL;
@@ -160,7 +169,7 @@ void print_each_packet_text()
 
 	while (read_packet(&edt)) {
 
-		proto_tree_print(&print_args, edt, print_stream);
+		proto_tree_print(&print_args, edt, NULL, print_stream);
 
 		epan_dissect_free(edt);
 		edt = NULL;
@@ -170,28 +179,7 @@ void print_each_packet_text()
 static void
 timestamp_set(capture_file cfile)
 {
-	switch(wtap_file_tsprecision(cfile.wth)) {
-		case(WTAP_FILE_TSPREC_SEC):
-			timestamp_set_precision(TS_PREC_AUTO_SEC);
-			break;
-		case(WTAP_FILE_TSPREC_DSEC):
-			timestamp_set_precision(TS_PREC_AUTO_DSEC);
-			break;
-		case(WTAP_FILE_TSPREC_CSEC):
-			timestamp_set_precision(TS_PREC_AUTO_CSEC);
-			break;
-		case(WTAP_FILE_TSPREC_MSEC):
-			timestamp_set_precision(TS_PREC_AUTO_MSEC);
-			break;
-		case(WTAP_FILE_TSPREC_USEC):
-			timestamp_set_precision(TS_PREC_AUTO_USEC);
-			break;
-		case(WTAP_FILE_TSPREC_NSEC):
-			timestamp_set_precision(TS_PREC_AUTO_NSEC);
-			break;
-		default:
-			g_assert_not_reached();
-	}
+    timestamp_set_precision(TS_PREC_AUTO);
 }
 
 static const nstime_t *

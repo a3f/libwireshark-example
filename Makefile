@@ -1,15 +1,15 @@
 CFLAGS+= -std=c99 -g -Wall
 CFLAGS+= `pkg-config --cflags glib-2.0`
-CFLAGS+= -I./include/wireshark
+CFLAGS+= `pkg-config --cflags wireshark`
 CFLAGS+= -I./include/wireshark/wiretap
 CFLAGS+= -I./include
-LDFLAGS= -L./libs -lwiretap -lwireshark -lwsutil -lglib-2.0
-LDFLAGS+= -Wl,-rpath,./libs
+LDFLAGS= -lwiretap -lwireshark -lwsutil -lglib-2.0
 
 TARGET=myshark
 SRC=$(wildcard *.c)
 
-SRC_WIRESHARK?=~/person/wireshark-1.12.8
+SRC_WIRESHARK?=${HOME}/prjs/wireshark
+CFLAGS+= -I${SRC_WIRESHARK}
 
 default:
 	@gcc ${CFLAGS} -o ${TARGET} ${SRC} ${LDFLAGS}
