@@ -147,6 +147,8 @@ void print_each_packet_xml()
 {
 	epan_dissect_t *edt;
 
+    fputs("XML printing not supported for the time being", stderr);
+
 	while (read_packet(&edt)) {
 
 		//proto_tree_write_pdml(edt, stdout);
@@ -224,7 +226,7 @@ int main(int argc, char* argv[])
 
 	int          err;
 	char        *filename = NULL;
-	print_type_t print_type = PRINT_XML;
+	print_type_t print_type = PRINT_TEXT;
 	int          opt;
 
 	while((opt = getopt(argc, argv, "f:t:")) != -1) {

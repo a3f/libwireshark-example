@@ -1,3 +1,12 @@
-myshark
-.libs/*
-libs/libwireshark.so
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+build/
+*.dylib
+libwireshark-example
+libwireshark-example.exe
+*.pyc
+

@@ -1,41 +1,12 @@
-# Decode by libwireshark
-Use libwireshark to decode pcap file and print out as XML format or Text format like tshark.
+#### Sample project showcasing stand-alone use of libwireshark.
 
-#Dependencies
-* libwireshark library (version 1.12.8)
+Tested working with Wireshark 2.3.0 on macOS Sierra.
 
-* libglib2.0
+#### Usage
 
-# Install
-- ubuntu
-```
-apt-get install libglib2.0-dev
+    mkdir build && cd build
+    cmake ..
+    make
+    ./libwireshark-example -f ../1.pcap
 
-git clone https://github.com/sunwxg/decode_by_libwireshark.git
-
-cd decode_by_libwireshark
-cat libs/libwireshark.{00,01,02,03} > libs/libwireshark.so
-chmod 775 libs/libwireshark.so
-
-make
-
-./myshark -f file.pcap -t text
-```
-
-# Debug
-Debug program to see how wireshark dissect packet.
-- Download wireshark source code(version 1.12.8) from www.wireshark.org
-- Uncompress source code and compile. Following [wireshark guide](https://www.wireshark.org/docs/wsug_html/#ChBuildInstallUnixBuild)
-- Export SRC_WIRESHARK as wireshark source code path
-```
-export SRC_WIRESHARK=<wireshark source code path>
-```
-- Make file
-```
-make debug
-```
-- Using GDB
-```
-libtool --mode=execute gdb ./myshark
-```
-
+Code is released under same terms as [tshark](https://github.com/boundary/wireshark/blob/master/tshark.c), which it's based on (GNU GPL2.0+). It contains [code by Sun Wang](https://github.com/sunwxg/decode_by_libwireshark), originally under the MIT license.
