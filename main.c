@@ -280,8 +280,7 @@ int main(int argc, char* argv[])
     while((opt = getopt(argc, argv, "f:t:")) != -1) {
         switch(opt) {
             case 'f':
-                filename = calloc(sizeof(char), strlen(optarg) + 1);
-                strncpy(filename, optarg, strlen(optarg));
+                filename = strdup(optarg);
                 break;
             case 't':
                 if (strcmp(optarg, "manual") == 0) {
