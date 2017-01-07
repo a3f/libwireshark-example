@@ -91,26 +91,28 @@ gboolean read_packet(epan_dissect_t **edt_r)
 {
 	epan_dissect_t    *edt;
 	int                err;
-	gchar             *err_info = NULL;
+	char             *err_info = NULL;
 	static guint32     cum_bytes = 0;
 	static gint64      data_offset = 0;
 
 	struct wtap_pkthdr *whdr = wtap_phdr(cfile.wth);
-	guchar             *buf = wtap_buf_ptr(cfile.wth);
+	unsigned char             *buf = wtap_buf_ptr(cfile.wth);
 
-	if (wtap_read(cfile.wth, &err, &err_info, &data_offset)) {
+	while (wtap_read(cfile.wth, &err, &err_info, &data_offset)) {
 
 		cfile.count++;
 
 		frame_data fdlocal;
 		frame_data_init(&fdlocal, cfile.count, whdr, data_offset, cum_bytes);
 
+
 		edt = epan_dissect_new(cfile.epan, TRUE, TRUE);
 
 		frame_data_set_before_dissect(&fdlocal, &cfile.elapsed_time, &cfile.ref, cfile.prev_dis);
 		cfile.ref = &fdlocal;
 
-		epan_dissect_run(edt, cfile.cd_t, &(cfile.phdr), frame_tvbuff_new(&fdlocal, buf), &fdlocal, &cfile.cinfo);
+		/*epan_dissect_run(edt, cfile.cd_t, &(cfile.phdr), frame_tvbuff_new(&fdlocal, buf), &fdlocal, &cfile.cinfo);*/
+        epan_dissect_run_with_taps(edt, cfile.cd_t, whdr, frame_tvbuff_new(&fdlocal, buf), &fdlocal, &cfile.cinfo);
 
 		frame_data_set_after_dissect(&fdlocal, &cum_bytes);
 		cfile.prev_cap = cfile.prev_dis = frame_data_sequence_add(cfile.frames, &fdlocal);
@@ -210,40 +212,23 @@ print_field(proto_node *node, int *level, char **buf)
 	}
 }
 
-static void
-proto_node_print(proto_tree *tree, int *level, char **buf)
+void visit(proto_node *node, gpointer data)
 {
-	proto_node *node = tree;
-	proto_node *current;
-
-	if (!node)
-		return;
-
-	node = node->first_child;
-	while (node != NULL) {
-		current = node;
-		node    = current->next;
-
-		print_field(current, level, buf);
-
-		(*level)++;
-		proto_node_print(current, level, buf);
-		(*level)--;
-	}
-}
-
-void print_node(epan_dissect_t *edt)
-{
-	char *buf = calloc(sizeof(char), BUFSIZE);
+    field_info *fi  = PNODE_FINFO(node);
+	char *buf = calloc(1, BUFSIZE);
 	int level = 0;
-	proto_tree *node = edt->tree;
 
 	print_field(node, &level, &buf);
 
 	level++;
-	proto_node_print(node, &level, &buf);
+    g_assert((fi->tree_type >= -1) && (fi->tree_type < num_tree_types));
+    if (node->first_child != NULL) {
+        level++;
+        proto_tree_children_foreach(node, visit, data);
+        level--;
+    }
 
-	printf("%s\n", buf);
+	printf("%s", buf);
 
 	free(buf);
 }
@@ -254,7 +239,8 @@ void print_each_packet_self_format()
 
 	while (read_packet(&edt)) {
 
-		print_node(edt);
+		/*print_node(edt);*/
+        proto_tree_children_foreach(edt->tree, visit, NULL);
 
 		epan_dissect_free(edt);
 		edt = NULL;

@@ -2,24 +2,22 @@
 #define WS_MSVC_NORETURN
 #define _GNU_SOURCE
 
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <stdbool.h>
 #include <string.h>
 #include <epan/epan.h>
 #include <epan/print.h>
 #include <epan/timestamp.h>
-#include <epan/prefs.h>
-#include <epan/column.h>
 #include <epan/epan-int.h>
-#include <wsutil/privileges.h>
 #include <epan/epan_dissect.h>
 #include <epan/proto.h>
 #include <epan/ftypes/ftypes.h>
 #include <epan/asm_utils.h>
 #include <glib.h>
+
 
 #ifdef LINT
 #define gboolean _Bool
@@ -32,42 +30,31 @@
 #endif
 
 extern tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf);
-static void timestamp_set(capture_file cfile);
 static const nstime_t *tshark_get_frame_ts(void *data, guint32 frame_num);
 static void clean();
 
-typedef enum {
+enum print_type {
     PRINT_MANUAL,
     PRINT_TEXT,
-}print_type_t;
+};
 
 //global variable
 capture_file cfile;
-
-e_prefs *get_prefs()
-{
-    e_prefs     *prefs_p;
-    char        *gpf_path, *pf_path;
-    int          gpf_read_errno, gpf_open_errno;
-    int          pf_open_errno, pf_read_errno;
-
-    prefs_p = read_prefs(&gpf_open_errno, &gpf_read_errno, &gpf_path,
-            &pf_open_errno, &pf_read_errno, &pf_path);
-    return prefs_p;
-}
 
 int init(char *filename)
 {
     int          err = 0;
     char       *err_info = NULL;
-    e_prefs     *prefs_p;
 
-    init_process_policies();
+#if 0
     epan_register_plugin_types(); /* Types known to libwireshark */
+    scan_plugins();
+    /* Register all libwiretap plugin modules. */
+    register_all_wiretap_modules();
+#endif
     wtap_register_plugin_types(); /* Types known to libwiretap */
 
-    if (!epan_init(register_all_protocols, register_all_protocol_handoffs, NULL,
-                NULL)) {
+    if (!epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL)) {
         fprintf(stderr, "Error at epan_init\n");
         return 2;
     }
@@ -82,16 +69,15 @@ int init(char *filename)
         goto fail;
 
     cfile.count = 0;
+    epan_free(cfile.epan);
     cfile.epan = epan_new();
     cfile.epan->data = &cfile;
-    cfile.epan->get_frame_ts = tshark_get_frame_ts;
 
-    timestamp_set(cfile);
+    cfile.epan->get_frame_ts = tshark_get_frame_ts;
+    timestamp_set_precision(TS_PREC_AUTO);
+
     cfile.frames = new_frame_data_sequence();
 
-    prefs_p = get_prefs();
-
-    build_column_format_array(&cfile.cinfo, prefs_p->num_cols, TRUE);
 
     return 0;
 
@@ -100,16 +86,18 @@ fail:
     return err;
 }
 
-_Bool read_packet(epan_dissect_t **edt_r)
+int read_packet(epan_dissect_t **edt_r)
 {
     epan_dissect_t    *edt;
     int                err;
-    char             *err_info = NULL;
-    static uint32_t     cum_bytes = 0;
+    char              *err_info = NULL;
+    static guint32     cum_bytes = 0;
     static gint64      data_offset = 0;
 
     struct wtap_pkthdr *whdr = wtap_phdr(cfile.wth);
-    unsigned char             *buf = wtap_buf_ptr(cfile.wth);
+    unsigned char      *buf = wtap_buf_ptr(cfile.wth);
+
+    edt = epan_dissect_new(cfile.epan, TRUE, TRUE);
 
     if (wtap_read(cfile.wth, &err, &err_info, &data_offset)) {
 
@@ -118,12 +106,9 @@ _Bool read_packet(epan_dissect_t **edt_r)
         frame_data fdlocal;
         frame_data_init(&fdlocal, cfile.count, whdr, data_offset, cum_bytes);
 
-        edt = epan_dissect_new(cfile.epan, TRUE, TRUE);
-
         frame_data_set_before_dissect(&fdlocal, &cfile.elapsed_time, &cfile.ref, cfile.prev_dis);
-        cfile.ref = &fdlocal;
 
-        epan_dissect_run(edt, cfile.cd_t, &(cfile.phdr), frame_tvbuff_new(&fdlocal, buf), &fdlocal, &cfile.cinfo);
+        epan_dissect_run_with_taps(edt, cfile.cd_t, whdr, frame_tvbuff_new(&fdlocal, buf), &fdlocal, NULL);
 
         frame_data_set_after_dissect(&fdlocal, &cum_bytes);
         cfile.prev_cap = cfile.prev_dis = frame_data_sequence_add(cfile.frames, &fdlocal);
@@ -155,43 +140,16 @@ void clean()
     epan_cleanup();
 }
 
-gboolean
-proto_tree_traverse_post_order(proto_tree *tree, proto_tree_traverse_func func,
-			       gpointer data)
-{
-	proto_node *pnode = tree;
-	proto_node *child;
-	proto_node *current;
-
-	child = pnode->first_child;
-	while (child != NULL) {
-		/*
-		 * The routine we call might modify the child, e.g. by
-		 * freeing it, so we get the child's successor before
-		 * calling that routine.
-		 */
-		current = child;
-		child   = current->next;
-		if (proto_tree_traverse_post_order((proto_tree *)current, func, data))
-			return TRUE;
-	}
-	if (func(pnode, data))
-		return TRUE;
-
-	return FALSE;
-}
-
-
 void visit(proto_node *node, gpointer data) {
-	field_info *fi  = PNODE_FINFO(node);
+    field_info *fi  = PNODE_FINFO(node);
     if (!fi || !fi->rep) return;
 
     printf("***\t%s\n", node->finfo->rep->representation);
 
     g_assert((fi->tree_type >= -1) && (fi->tree_type < num_tree_types));
-        if (node->first_child != NULL) {
-            proto_tree_children_foreach(node, visit, data);
-        }
+    if (node->first_child != NULL) {
+        proto_tree_children_foreach(node, visit, data);
+    }
 }
 void print_each_packet_manual()
 {
@@ -207,13 +165,12 @@ void print_each_packet_manual()
 
 void print_each_packet_text()
 {
+    static int num;
     epan_dissect_t *edt;
-    print_stream_t *print_stream;
-    print_args_t    print_args;
+    print_args_t    print_args = {0};
+    print_stream_t *print_stream = print_stream_text_stdio_new(stdout);
 
-    print_stream = print_stream_text_stdio_new(stdout);
-
-    print_args.print_hex = TRUE;
+    print_args.print_hex = FALSE;
     print_args.print_dissections = print_dissections_expanded;
 
     while (read_packet(&edt)) {
@@ -225,14 +182,8 @@ void print_each_packet_text()
     }
 }
 
-    static void
-timestamp_set(capture_file cfile)
-{
-    timestamp_set_precision(TS_PREC_AUTO);
-}
 
-    static const nstime_t *
-tshark_get_frame_ts(void *data, guint32 frame_num)
+static const nstime_t * tshark_get_frame_ts(void *data, guint32 frame_num)
 {
     capture_file *cf = (capture_file *) data;
 
@@ -273,7 +224,7 @@ int main(int argc, char* argv[])
 
     int          err;
     char        *filename = NULL;
-    print_type_t print_type = PRINT_TEXT;
+    enum print_type print_type = PRINT_TEXT;
     int          opt;
 
 
@@ -326,3 +277,4 @@ int main(int argc, char* argv[])
     clean();
     return 0;
 }
+
